@@ -76,7 +76,7 @@ export default function Layout({ children, title, onBack, showBack = false, show
                 <ChevronLeft className="h-5 w-5" />
               </button>
             ) : null}
-            <h1 className="text-lg font-bold">{title}</h1>
+            <h1 className="min-w-0 flex-1 truncate text-lg font-bold">{title}</h1>
           </header>
         ) : null}
 

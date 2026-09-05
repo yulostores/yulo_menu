@@ -3,10 +3,10 @@
 
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Search, ShoppingBag } from "lucide-react";
+import { Minus, Plus, Search, ShoppingBag } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { flattenMenu, useRestaurantMenu } from "@/hooks/useMenu";
+import { flattenMenu, useRestaurantMenu, useRestaurant } from "@/hooks/useMenu";
 import { useTableSession } from "@/context/TableSessionContext";
 import Layout, { FoodThumb, VegDot, formatPrice } from "@/components/Layout";
 
@@ -19,8 +19,9 @@ const FOOD_FILTERS = [
 
 export default function Menu() {
   const navigate = useNavigate();
-  const { session, addToCart, cartCount, cartTotal } = useTableSession();
+  const { session, cart, addToCart, setQuantity, cartCount, cartTotal } = useTableSession();
 
+  const { data: restaurant } = useRestaurant(session.restaurantId);
   const { data: menu = [], isLoading, isError, error } = useRestaurantMenu(session.restaurantId);
 
   const [search, setSearch] = useState("");
@@ -68,8 +69,10 @@ export default function Menu() {
       </button>
     ) : null;
 
+  const title = restaurant ? `Welcome to ${restaurant.name}` : "Menu";
+
   return (
-    <Layout title="Menu" showNav activeNav="Menu" footer={footer}>
+    <Layout title={title} showNav activeNav="Menu" footer={footer}>
       <div className="space-y-4 px-4 py-4">
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -133,47 +136,71 @@ export default function Menu() {
           </p>
         ) : (
           <div className="space-y-3">
-            {visible.map((item) => (
-              <article key={item._id} className="flex gap-3 rounded-2xl border border-brand-cream/70 bg-white p-3">
-                <button type="button" onClick={() => navigate(`/item/${item._id}`)} className="min-w-0 flex-1 text-left">
-                  <div className="flex items-center gap-2">
-                    <VegDot type={item.foodType} />
-                    <h3 className="truncate font-bold">{item.name}</h3>
-                  </div>
-                  {item.description ? (
-                    <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{item.description}</p>
-                  ) : null}
-                  <div className="mt-2 flex items-center gap-2">
-                    <span className="font-bold text-brand-red">
-                      {formatPrice(item.effectivePrice ?? item.sellingPrice)}
-                    </span>
-                    {item.discountedPrice && item.discountedPrice < item.sellingPrice ? (
-                      <span className="text-xs text-muted-foreground line-through">
-                        {formatPrice(item.sellingPrice)}
-                      </span>
-                    ) : null}
-                    {item.prepTime ? <span className="text-xs text-muted-foreground">· {item.prepTime} min</span> : null}
-                  </div>
-                </button>
+            {visible.map((item) => {
+              const cartLine = cart.find((line) => line.menuItemId === item._id);
 
-                <div className="relative shrink-0">
-                  <FoodThumb src={item.image} alt={item.name} className="h-24 w-24 rounded-xl" />
-                  {item.isAvailable === false ? (
-                    <span className="absolute inset-0 grid place-items-center rounded-xl bg-black/55 text-[11px] font-bold text-white">
-                      Unavailable
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => addToCart(item, 1)}
-                      className="absolute -bottom-2 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-lg bg-brand-gradient px-3 py-1.5 text-xs font-bold text-white shadow-md"
-                    >
-                      <Plus className="h-3 w-3" /> Add
-                    </button>
-                  )}
-                </div>
-              </article>
-            ))}
+              return (
+                <article key={item._id} className="flex gap-3 rounded-2xl border border-brand-cream/70 bg-white p-3">
+                  <button type="button" onClick={() => navigate(`/item/${item._id}`)} className="min-w-0 flex-1 text-left">
+                    <div className="flex items-center gap-2">
+                      <VegDot type={item.foodType} />
+                      <h3 className="truncate font-bold">{item.name}</h3>
+                    </div>
+                    {item.description ? (
+                      <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{item.description}</p>
+                    ) : null}
+                    <div className="mt-2 flex items-center gap-2">
+                      <span className="font-bold text-brand-red">
+                        {formatPrice(item.effectivePrice ?? item.sellingPrice)}
+                      </span>
+                      {item.discountedPrice && item.discountedPrice < item.sellingPrice ? (
+                        <span className="text-xs text-muted-foreground line-through">
+                          {formatPrice(item.sellingPrice)}
+                        </span>
+                      ) : null}
+                      {item.prepTime ? <span className="text-xs text-muted-foreground">· {item.prepTime} min</span> : null}
+                    </div>
+                  </button>
+
+                  <div className="relative shrink-0">
+                    <FoodThumb src={item.image} alt={item.name} className="h-24 w-24 rounded-xl" />
+                    {item.isAvailable === false ? (
+                      <span className="absolute inset-0 grid place-items-center rounded-xl bg-black/55 text-[11px] font-bold text-white">
+                        Unavailable
+                      </span>
+                    ) : cartLine ? (
+                      <div className="absolute -bottom-2 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-lg bg-brand-gradient px-2 py-1.5 text-white shadow-md">
+                        <button
+                          type="button"
+                          onClick={() => setQuantity(item._id, cartLine.quantity - 1)}
+                          className="grid h-4 w-4 place-items-center"
+                          aria-label="Decrease quantity"
+                        >
+                          <Minus className="h-3 w-3" />
+                        </button>
+                        <span className="min-w-[1ch] text-xs font-bold">{cartLine.quantity}</span>
+                        <button
+                          type="button"
+                          onClick={() => setQuantity(item._id, cartLine.quantity + 1)}
+                          className="grid h-4 w-4 place-items-center"
+                          aria-label="Increase quantity"
+                        >
+                          <Plus className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => addToCart(item, 1)}
+                        className="absolute -bottom-2 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-lg bg-brand-gradient px-3 py-1.5 text-xs font-bold text-white shadow-md"
+                      >
+                        <Plus className="h-3 w-3" /> Add
+                      </button>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
           </div>
         )}
       </div>

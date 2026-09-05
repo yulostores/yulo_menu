@@ -1,9 +1,10 @@
 // Assistance requests — POST /api/restaurants/:id/requests, already public/no-login
-// (see request.controller.js on the backend). "Request bill" is how a guest asks to pay
-// and leave — settlement itself stays waiter-mediated (TableSession -> Bill), no payment
-// gateway wired into this app for v1.
+// (see request.controller.js on the backend). "Request bill" just notifies a waiter, who
+// settles it in person (cash/card machine) — for paying online without a waiter, see the
+// Bill tab (src/screens/Bill.jsx), which reuses the same TableSession -> Bill primitives.
 
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Bell, CheckCircle2, Droplet, Receipt } from "lucide-react";
 
 import { useCreateRequest } from "@/hooks/useOrder";
@@ -17,6 +18,7 @@ const OPTIONS = [
 ];
 
 export default function Help() {
+  const navigate = useNavigate();
   const { session } = useTableSession();
   const createRequest = useCreateRequest(session.restaurantId);
   const [sent, setSent] = useState(null);
@@ -72,6 +74,14 @@ export default function Help() {
             Sent — your waiter has been notified.
           </p>
         ) : null}
+
+        <button
+          type="button"
+          onClick={() => navigate("/bill")}
+          className="w-full text-center text-[12px] font-medium text-brand-orange underline underline-offset-2"
+        >
+          Or pay your bill online now, without a waiter
+        </button>
       </div>
     </Layout>
   );

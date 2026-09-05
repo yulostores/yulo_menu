@@ -9,6 +9,7 @@ export const menuKeys = {
   restaurant: (rId)       => ["restaurant", rId],
   table:      (rId, tId)  => ["table", rId, tId],
   session:    (rId, tId)  => ["session", rId, tId],
+  bill:       (rId, tId)  => ["bill", rId, tId],
 };
 
 export function useRestaurantMenu(restaurantId) {

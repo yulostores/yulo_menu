@@ -3,7 +3,7 @@
 
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { BellRing, ChevronLeft, ClipboardList, UtensilsCrossed } from "lucide-react";
+import { BellRing, ClipboardList, Receipt, ChevronLeft, UtensilsCrossed } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useTableSession } from "@/context/TableSessionContext";
@@ -11,6 +11,7 @@ import { useTableSession } from "@/context/TableSessionContext";
 const NAV = [
   { to: "/menu", label: "Menu", icon: UtensilsCrossed },
   { to: "/help", label: "Help", icon: BellRing },
+  { to: "/bill", label: "Bill", icon: Receipt },
   { to: "/cart", label: "Cart", icon: ClipboardList },
 ];
 
@@ -88,7 +89,7 @@ export default function Layout({ children, title, onBack, showBack = false, show
         ) : null}
 
         {showNav ? (
-          <nav className="sticky bottom-0 z-10 grid grid-cols-3 border-t border-brand-cream/60 bg-white">
+          <nav className="sticky bottom-0 z-10 grid grid-cols-4 border-t border-brand-cream/60 bg-white">
             {NAV.map((item) => {
               const Icon = item.icon;
               const active = activeNav === item.label;

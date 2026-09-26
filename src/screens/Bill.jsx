@@ -4,7 +4,7 @@
 // billing.service.js primitives the staff-side bill screen already calls
 // (assembleBill/markPaid), via the new public bill.controller.js endpoints.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { CheckCircle2, Receipt } from "lucide-react";
 
@@ -12,11 +12,31 @@ import { useTableSession } from "@/context/TableSessionContext";
 import { useBill, usePayBill, usePayBillSimulate, useVerifyBillPayment, useCancelBillPayment } from "@/hooks/useBill";
 import { openRazorpayCheckout, RazorpayCancelledError } from "@/lib/razorpay";
 import Layout, { formatPrice } from "@/components/Layout";
+import { AWAITING_APPROVAL } from "@/lib/orderStatus";
+
+// Mirrors yulo_backend billing.service.js: the bill can only be settled once every round
+// that is still on it has reached the table. Checked here too so the guest is told why up
+// front instead of tapping Pay into an error.
+const SERVED_STATUSES = new Set(["served", "delivered"]);
+
+// The backend's ORDERS_PENDING message is written for staff ("accept or reject them before
+// generating the bill"); a guest gets their own wording.
+function guestPayError(err) {
+  if (err?.code === "ORDERS_PENDING") {
+    return err.details?.awaitingApprovalCount > 0
+      ? "A round is still waiting for the restaurant to accept it. You can pay once they've answered."
+      : "Some of your food hasn't reached the table yet. You can pay once everything has been served.";
+  }
+  return err?.message ?? "Couldn't process your payment. Please try again.";
+}
 
 export default function Bill() {
   const navigate = useNavigate();
   const { session, clearCart } = useTableSession();
   const [error, setError] = useState("");
+  // True when `error` is the server refusing payment because a round is still pending — an
+  // error that stops being true on its own once that round is accepted and served.
+  const [pendingError, setPendingError] = useState(false);
   const [paying, setPaying] = useState(false);
 
   // Polls while a payment might be in flight so bill.status flips to "paid" here even if
@@ -32,12 +52,37 @@ export default function Bill() {
   const verifyPayment = useVerifyBillPayment(session.restaurantId, session.tableId);
   const cancelPayment = useCancelBillPayment(session.restaurantId, session.tableId);
 
+  const batches = bill?.batches ?? [];
+  const awaitingCount = batches.filter((b) => b.status === AWAITING_APPROVAL).length;
+  const cookingCount = batches.filter(
+    (b) => b.status && b.status !== "cancelled" && b.status !== AWAITING_APPROVAL && !SERVED_STATUSES.has(b.status),
+  ).length;
+  const allCancelled = batches.length > 0 && batches.every((b) => b.status === "cancelled");
+  const nothingToPay = Boolean(bill) && !(bill.grandTotal > 0) && awaitingCount === 0 && cookingCount === 0;
+  const payBlockedReason =
+    awaitingCount > 0
+      ? `${awaitingCount === 1 ? "A round is" : `${awaitingCount} rounds are`} still waiting for the restaurant to accept. You can pay once they've answered.`
+      : cookingCount > 0
+        ? "Some of your food hasn't reached the table yet. You can pay once everything has been served."
+        : null;
+
+  // The bill is polled; once nothing is pending any more, a "can't pay yet" error from an
+  // earlier attempt is simply out of date — drop it rather than leave it contradicting the
+  // enabled Pay button.
+  useEffect(() => {
+    if (pendingError && !payBlockedReason) {
+      setError("");
+      setPendingError(false);
+    }
+  }, [pendingError, payBlockedReason]);
+
   const isBusy =
     paying || payBill.isPending || payBillSimulate.isPending || verifyPayment.isPending;
 
   async function payOnline() {
     if (isBusy) return;
     setError("");
+    setPendingError(false);
     setPaying(true);
     try {
       const { razorpayOrder } = await payBill.mutateAsync();
@@ -61,7 +106,8 @@ export default function Bill() {
         setError("Payment not completed — you can try again whenever you're ready.");
       } else {
         await cancelPayment.mutateAsync().catch(() => {});
-        setError(err.message ?? "Couldn't process your payment. Please try again.");
+        setError(guestPayError(err));
+        setPendingError(err?.code === "ORDERS_PENDING");
       }
     } finally {
       setPaying(false);
@@ -127,11 +173,14 @@ export default function Bill() {
     );
   }
 
-  const footer = (
+  // A pending-round error and the live notice say the same thing; show only the live one.
+  const shownError = pendingError && payBlockedReason ? "" : error;
+
+  const footer = nothingToPay ? null : (
     <button
       type="button"
       onClick={payOnline}
-      disabled={isBusy}
+      disabled={isBusy || Boolean(payBlockedReason)}
       className="flex w-full items-center justify-between rounded-xl bg-brand-gradient px-4 py-3.5 text-white transition hover:brightness-105 disabled:opacity-50"
     >
       <span className="text-sm font-semibold">{isBusy ? "Processing…" : "Pay online"}</span>
@@ -142,24 +191,50 @@ export default function Bill() {
   return (
     <Layout title="Bill" showNav activeNav="Bill" footer={footer}>
       <div className="space-y-4 px-4 py-4">
-        {error ? <p className="rounded-lg bg-[#FCE9E4] px-3 py-2 text-sm text-brand-maroon">{error}</p> : null}
+        {shownError ? <p className="rounded-lg bg-[#FCE9E4] px-3 py-2 text-sm text-brand-maroon">{shownError}</p> : null}
+        {!shownError && payBlockedReason ? (
+          <p className="rounded-lg bg-[#FFF4E5] px-3 py-2 text-sm text-[#8A4B00]">{payBlockedReason}</p>
+        ) : null}
+        {nothingToPay ? (
+          <p className="rounded-lg bg-brand-cream/40 px-3 py-2 text-sm text-muted-foreground">
+            {allCancelled ? "Nothing to pay — every round on this bill was cancelled." : "Nothing to pay on this bill."}
+          </p>
+        ) : null}
 
         <section className="rounded-2xl border border-brand-cream/70 bg-white p-4">
-          {bill.batches.map((batch) => (
-            <div key={batch.orderId} className="mb-3 last:mb-0">
-              <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
-                Round {batch.batchNumber}
-              </p>
-              {batch.items.map((item, i) => (
-                <div key={i} className="flex justify-between py-0.5 text-sm">
-                  <span className="text-muted-foreground">
-                    {item.quantity} × {item.name}
-                  </span>
-                  <span className="font-medium">{formatPrice(item.lineTotal)}</span>
-                </div>
-              ))}
-            </div>
-          ))}
+          {batches.map((batch) => {
+            // Neither is charged: a cancelled round is off the bill, and a waiting one isn't
+            // on it until the restaurant accepts. The totals below already leave both out.
+            const cancelled = batch.status === "cancelled";
+            const awaiting = batch.status === AWAITING_APPROVAL;
+            const uncharged = cancelled || awaiting;
+            return (
+              <div key={batch.orderId} className="mb-3 last:mb-0">
+                <p className="mb-1 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+                  Round {batch.batchNumber ?? batch.round ?? ""}
+                  {cancelled ? (
+                    <span className="rounded bg-[#FCE9E4] px-1.5 py-0.5 normal-case tracking-normal text-brand-maroon">
+                      Cancelled · not charged
+                    </span>
+                  ) : awaiting ? (
+                    <span className="rounded bg-[#FFF4E5] px-1.5 py-0.5 normal-case tracking-normal text-[#8A4B00]">
+                      Waiting for the restaurant · not charged yet
+                    </span>
+                  ) : null}
+                </p>
+                {(batch.items ?? []).map((item, i) => (
+                  <div key={i} className="flex justify-between py-0.5 text-sm">
+                    <span className="text-muted-foreground">
+                      {item.quantity} × {item.name}
+                    </span>
+                    <span className={uncharged ? "text-muted-foreground line-through" : "font-medium"}>
+                      {formatPrice(item.lineTotal)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
         </section>
 
         <section className="space-y-1.5 rounded-2xl border border-brand-cream/70 bg-white p-4 text-sm">

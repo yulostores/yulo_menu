@@ -163,6 +163,10 @@ export default function Cart() {
             your final bill — ask your waiter or tap "Request bill" from Help when you're ready
             to pay.
           </p>
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            Your order goes to the restaurant first — you&apos;ll see it on the order screen the
+            moment they accept it.
+          </p>
         </section>
       </div>
     </Layout>

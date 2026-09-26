@@ -6,12 +6,18 @@ import { menuKeys } from "./useMenu";
 // { pollInterval }), but polled by table (session), not by a single order id: a guest can
 // place more than one order in a visit (batches), and the status screen should show all
 // of them plus the running total, not just the one just placed.
+//
+// `pollInterval` is a number of ms, or a function of the current session returning one —
+// so the status screen can poll faster while a round is waiting for the restaurant.
 export function useGuestSession(restaurantId, tableId, { pollInterval = 0 } = {}) {
   return useQuery({
     queryKey: menuKeys.session(restaurantId, tableId),
     queryFn: () => menuApi.getSession(restaurantId, tableId).then((r) => r.data.data.session),
     enabled: !!restaurantId && !!tableId,
-    refetchInterval: pollInterval || false,
+    refetchInterval:
+      typeof pollInterval === "function"
+        ? (query) => pollInterval(query.state.data) || false
+        : pollInterval || false,
     staleTime: 0,
   });
 }

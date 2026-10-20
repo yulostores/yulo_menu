@@ -10,7 +10,16 @@ import { useSearchParams } from "react-router-dom";
 const SESSION_KEY = "yulo_menu_session";
 const CART_KEY = "yulo_menu_cart";
 
-const EMPTY_SESSION = { restaurantId: null, tableId: null, guestPhone: "" };
+const EMPTY_SESSION = { restaurantId: null, tableId: null, guestPhone: "", savedAt: 0 };
+
+// A table and cart remembered on this phone go stale: a guest who opens the app hours later
+// (from the browser history, not by scanning) is not still sitting at that table. Past this
+// the stored table and cart are dropped and the guest is asked to scan again.
+const SESSION_TTL_MS = 6 * 60 * 60 * 1000;
+
+function isExpired(saved) {
+  return !saved?.savedAt || Date.now() - saved.savedAt > SESSION_TTL_MS;
+}
 
 function readJson(key, fallback) {
   try {
@@ -31,8 +40,12 @@ export function useTableSession() {
 
 export function TableSessionProvider({ children }) {
   const [params] = useSearchParams();
-  const [session, setSession] = useState(() => readJson(SESSION_KEY, EMPTY_SESSION));
+  const [expiredOnLoad] = useState(() => isExpired(readJson(SESSION_KEY, EMPTY_SESSION)));
+  const [session, setSession] = useState(() =>
+    expiredOnLoad ? EMPTY_SESSION : readJson(SESSION_KEY, EMPTY_SESSION),
+  );
   const [cart, setCart] = useState(() => {
+    if (expiredOnLoad) return [];
     try {
       const raw = window.localStorage.getItem(CART_KEY);
       return raw ? JSON.parse(raw) : [];
@@ -44,18 +57,19 @@ export function TableSessionProvider({ children }) {
   const urlRestaurantId = params.get("r");
   const urlTableId = params.get("t");
 
-  // Switching tables (a different QR scanned on the same device) clears the cart — the
-  // previous restaurant's items make no sense against a new one.
+  // Switching tables (a different QR scanned on the same device — another restaurant, or
+  // another table of the same one) clears the cart: what was picked for one table must not
+  // be ordered onto another's bill. Scanning also restarts the stale-session clock.
   useEffect(() => {
     if (!urlRestaurantId && !urlTableId) return;
     setSession((current) => {
-      const switched = urlRestaurantId && current.restaurantId && current.restaurantId !== urlRestaurantId;
+      const nextRestaurant = urlRestaurantId ?? current.restaurantId;
+      const nextTable = urlTableId ?? current.tableId;
+      const switched =
+        (current.restaurantId && nextRestaurant !== current.restaurantId) ||
+        (current.tableId && nextTable !== current.tableId);
       if (switched) setCart([]);
-      return {
-        ...current,
-        restaurantId: urlRestaurantId ?? current.restaurantId,
-        tableId: urlTableId ?? current.tableId,
-      };
+      return { ...current, restaurantId: nextRestaurant, tableId: nextTable, savedAt: Date.now() };
     });
   }, [urlRestaurantId, urlTableId]);
 
@@ -65,6 +79,8 @@ export function TableSessionProvider({ children }) {
 
   useEffect(() => {
     window.localStorage.setItem(CART_KEY, JSON.stringify(cart));
+    // Using the cart counts as still being at the table.
+    if (cart.length > 0) setSession((current) => (current.restaurantId ? { ...current, savedAt: Date.now() } : current));
   }, [cart]);
 
   const api = useMemo(() => {

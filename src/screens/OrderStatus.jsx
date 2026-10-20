@@ -69,8 +69,14 @@ export default function OrderStatus() {
     session.restaurantId,
     session.tableId,
     {
+      // null = no open sitting at this table any more (paid, or never opened): nothing can
+      // change on this screen, so stop asking. Reopening the screen fetches again.
       pollInterval: (data) =>
-        (data?.orders ?? []).some((o) => o?.status === AWAITING_APPROVAL) ? WAITING_POLL_MS : IDLE_POLL_MS,
+        data === null
+          ? 0
+          : (data?.orders ?? []).some((o) => o?.status === AWAITING_APPROVAL)
+            ? WAITING_POLL_MS
+            : IDLE_POLL_MS,
     },
   );
 
@@ -104,8 +110,10 @@ export default function OrderStatus() {
         ) : orders.length === 0 ? (
           <div className="flex flex-col items-center gap-3 px-4 py-16 text-center">
             <Clock className="h-10 w-10 text-brand-orange" />
-            <p className="font-bold">No order placed yet</p>
-            <p className="text-sm text-muted-foreground">Add some dishes and place your first order.</p>
+            <p className="font-bold">No open order at this table</p>
+            <p className="text-sm text-muted-foreground">
+              Add some dishes and place an order. Just paid? Your receipt is on the Bill tab.
+            </p>
             <button
               type="button"
               onClick={() => navigate("/menu")}

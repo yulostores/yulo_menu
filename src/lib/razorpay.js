@@ -22,20 +22,25 @@ function loadRazorpayScript() {
   return scriptPromise;
 }
 
+// The guest closed Razorpay's sheet. `failureReason` is set when an attempt inside the
+// sheet failed first (Razorpay keeps the sheet open after a failure so the guest can try
+// another method — only closing it ends the checkout).
 export class RazorpayCancelledError extends Error {
-  constructor() {
-    super("Payment was cancelled");
+  constructor(failureReason = null) {
+    super(failureReason ? `Payment failed: ${failureReason}` : "Payment was cancelled");
     this.name = "RazorpayCancelledError";
+    this.failureReason = failureReason;
   }
 }
 
 // razorpayOrder is the { id, amount, currency, keyId } object POST .../bill/pay returns
-// once the server has a real gateway key configured (see payment.service.js's
-// createRazorpayOrder).
+// (see payment.service.js's ensureRazorpayOrder). The key is the backend's public key id —
+// never configured in this app.
 export async function openRazorpayCheckout(razorpayOrder, { name, description } = {}) {
   await loadRazorpayScript();
 
   return new Promise((resolve, reject) => {
+    let failureReason = null;
     const rzp = new window.Razorpay({
       key: razorpayOrder.keyId,
       order_id: razorpayOrder.id,
@@ -51,11 +56,13 @@ export async function openRazorpayCheckout(razorpayOrder, { name, description } 
         });
       },
       modal: {
-        ondismiss: () => reject(new RazorpayCancelledError()),
+        ondismiss: () => reject(new RazorpayCancelledError(failureReason)),
       },
     });
 
-    rzp.on("payment.failed", () => reject(new Error("Payment failed")));
+    rzp.on("payment.failed", (response) => {
+      failureReason = response?.error?.description ?? "the payment didn't go through";
+    });
     rzp.open();
   });
 }

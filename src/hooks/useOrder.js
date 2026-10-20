@@ -25,7 +25,7 @@ export function useGuestSession(restaurantId, tableId, { pollInterval = 0 } = {}
 export function usePlaceOrder(restaurantId, tableId) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body) => menuApi.placeOrder(restaurantId, tableId, body),
+    mutationFn: ({ body, idempotencyKey }) => menuApi.placeOrder(restaurantId, tableId, body, idempotencyKey),
     onSuccess: () => qc.invalidateQueries({ queryKey: menuKeys.session(restaurantId, tableId) }),
   });
 }

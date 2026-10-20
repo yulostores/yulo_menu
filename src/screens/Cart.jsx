@@ -7,9 +7,36 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Minus, Phone, Plus, ShoppingBag, Trash2 } from "lucide-react";
 
+import { newIdempotencyKey } from "@/api/menu.api";
 import { usePlaceOrder } from "@/hooks/useOrder";
 import { useTableSession } from "@/context/TableSessionContext";
 import Layout, { FoodThumb, VegDot, formatPrice } from "@/components/Layout";
+
+// One Idempotency-Key per cart submission: the same items + note + phone sent again (a retry
+// after a timeout, a double-tap, a reload mid-request) reuse it, so the server answers with
+// the round it already placed (200) instead of placing it twice. Kept across a reload; a
+// changed cart is a new submission and gets a new key.
+const SUBMISSION_KEY = "yulo_menu_order_submission";
+
+function submissionKeyFor(signature) {
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(SUBMISSION_KEY) ?? "null");
+    if (saved?.signature === signature && saved.key) return saved.key;
+    const key = newIdempotencyKey();
+    window.localStorage.setItem(SUBMISSION_KEY, JSON.stringify({ signature, key }));
+    return key;
+  } catch {
+    return newIdempotencyKey();
+  }
+}
+
+function forgetSubmission() {
+  try {
+    window.localStorage.removeItem(SUBMISSION_KEY);
+  } catch {
+    // ignore — storage blocked
+  }
+}
 
 export default function Cart() {
   const navigate = useNavigate();
@@ -28,7 +55,7 @@ export default function Cart() {
     setError("");
     try {
       setGuestPhone(phone.trim());
-      await placeOrderMutation.mutateAsync({
+      const body = {
         items: cart.map((line) => ({
           menuItemId: line.menuItemId,
           quantity: line.quantity,
@@ -36,7 +63,11 @@ export default function Cart() {
         })),
         ...(instructions.trim() ? { specialInstructions: instructions.trim() } : {}),
         ...(phone.trim() ? { guestPhone: phone.trim() } : {}),
-      });
+      };
+      const signature = JSON.stringify([session.restaurantId, session.tableId, body]);
+      // 201 = placed, 200 = this very submission was already placed — both are done.
+      await placeOrderMutation.mutateAsync({ body, idempotencyKey: submissionKeyFor(signature) });
+      forgetSubmission();
       clearCart();
       navigate("/status");
     } catch (err) {
@@ -159,9 +190,8 @@ export default function Cart() {
             <span className="font-semibold">{formatPrice(cartTotal)}</span>
           </div>
           <p className="mt-2 text-[11px] text-muted-foreground">
-            Taxes and any applicable discounts are calculated by the restaurant and shown on
-            your final bill — ask your waiter or tap "Request bill" from Help when you're ready
-            to pay.
+            GST (where the restaurant charges it), any service charge and a small platform fee
+            are added on your bill. Pay from the Bill tab when you&apos;re done, or at the counter.
           </p>
           <p className="mt-2 text-[11px] text-muted-foreground">
             Your order goes to the restaurant first — you&apos;ll see it on the order screen the

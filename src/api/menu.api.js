@@ -3,8 +3,10 @@ import client from "./client";
 // Every endpoint here is public — no auth header, ever. See
 // yulo_backend/server/routes/restaurant.routes.js for the full contract.
 
-function idempotencyKey() {
-  // Guards against a duplicate order on a network retry / double-tap.
+// One key per cart submission (see screens/Cart.jsx): a retry of the same submission —
+// a network blip, a double-tap — reuses it, and the server answers 200 with the order it
+// already placed instead of placing it twice.
+export function newIdempotencyKey() {
   if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
@@ -24,9 +26,9 @@ export const menuApi = {
 
   // The guest order endpoint — no login, no tableSessionId to track client-side (the
   // server opens/reuses the session by tableId).
-  placeOrder: (restaurantId, tableId, body) =>
+  placeOrder: (restaurantId, tableId, body, idempotencyKey) =>
     client.post(`/restaurants/${restaurantId}/tables/${tableId}/orders`, body, {
-      headers: { "Idempotency-Key": idempotencyKey() },
+      headers: { "Idempotency-Key": idempotencyKey ?? newIdempotencyKey() },
     }),
 
   // "Call waiter" / "Request bill" — type: "call_waiter" | "water" | "bill" | "other"
@@ -39,22 +41,38 @@ export const menuApi = {
   getBill: (restaurantId, tableId) =>
     client.get(`/restaurants/${restaurantId}/tables/${tableId}/bill`),
 
-  // Creates the Razorpay order for the current bill total and locks the session against
-  // new orders while payment is in flight (see publicBill.controller.js's payBill).
-  // razorpayOrder in the response is null when the server has no gateway key configured
-  // — callers fall back to payBillSimulate below.
+  // Starts — or resumes — paying the bill online and locks the sitting against new rounds
+  // while payment is in flight (publicBill.controller.js's payBill). Calling it again hands
+  // back the SAME Razorpay order while it can still be paid for this amount.
+  // → { bill, razorpayOrder | null, reused, paymentSimulated }. razorpayOrder is null only
+  // when the server runs in payment-simulation mode (local/dev) — see payBillSimulate.
   payBill: (restaurantId, tableId) =>
     client.post(`/restaurants/${restaurantId}/tables/${tableId}/bill/pay`),
 
-  // Dev/local-only stand-in for when the server has no Razorpay key configured.
+  // Dev/local-only stand-in for a real payment. The route only exists while the server's
+  // payment simulation is on (404 otherwise) — never in production.
   payBillSimulate: (restaurantId, tableId) =>
     client.post(`/restaurants/${restaurantId}/tables/${tableId}/bill/pay/simulate`),
+
+  // Where a payment stands, for when verify failed or never answered: a webhook may have
+  // settled the bill anyway. Named by the Razorpay order the guest was paying, so it never
+  // reports another party's bill. → { bill: { status, paid, sessionStatus, refund, … } | null }
+  getBillPaymentStatus: (restaurantId, tableId, razorpayOrderId) =>
+    client.get(`/restaurants/${restaurantId}/tables/${tableId}/bill/payment`, {
+      params: razorpayOrderId ? { razorpayOrderId } : {},
+    }),
 
   verifyBillPayment: (restaurantId, tableId, signature) =>
     client.post(`/restaurants/${restaurantId}/tables/${tableId}/bill/verify`, signature),
 
   // The guest backed out of the Razorpay checkout without completing it — reopens the
-  // session for ordering/retrying.
+  // session for ordering/retrying. 409 PAYMENT_IN_PROGRESS while a payment for the bill is
+  // authorized or captured: the guest may have paid and only lost the confirmation, so the
+  // caller keeps polling getBillPaymentStatus instead.
   cancelBillPayment: (restaurantId, tableId) =>
     client.post(`/restaurants/${restaurantId}/tables/${tableId}/bill/cancel`),
+
+  // Public app switches — payments.paymentSimulationEnabled says whether the simulated
+  // stand-in may be used (local/dev only).
+  getAppConfig: () => client.get(`/app/config`),
 };

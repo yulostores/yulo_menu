@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { flattenMenu, useRestaurantMenu, useRestaurant } from "@/hooks/useMenu";
 import { useTableSession } from "@/context/TableSessionContext";
 import Layout, { FoodThumb, VegDot, formatPrice } from "@/components/Layout";
+import Home from "@/screens/Home";
 
 const FOOD_FILTERS = [
   { value: "all", label: "All" },
@@ -44,15 +45,9 @@ export default function Menu() {
     });
   }, [items, activeCategory, foodFilter, search]);
 
-  if (!session.restaurantId) {
-    return (
-      <Layout title="Menu" showNav activeNav="Menu">
-        <p className="px-5 py-10 text-center text-sm text-muted-foreground">
-          Scan a table QR code to open a restaurant menu.
-        </p>
-      </Layout>
-    );
-  }
+  // Opened directly, not from a table QR: the website's front page (what Yulo Stores is, a live
+  // menu with prices, the policy pages) instead of a bare "scan a QR" line.
+  if (!session.restaurantId) return <Home />;
 
   const footer =
     cartCount > 0 ? (

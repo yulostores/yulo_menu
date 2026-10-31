@@ -12,6 +12,8 @@ import Cart from "./screens/Cart";
 import OrderStatus from "./screens/OrderStatus";
 import Bill from "./screens/Bill";
 import Help from "./screens/Help";
+import PolicyPage from "./screens/PolicyPage";
+import Contact from "./screens/Contact";
 
 export default function App() {
   return (
@@ -23,6 +25,12 @@ export default function App() {
       <Route path="/status" element={<OrderStatus />} />
       <Route path="/bill" element={<Bill />} />
       <Route path="/help" element={<Help />} />
+      {/* The website's policy pages — linked from the home page footer. */}
+      <Route path="/terms" element={<PolicyPage policy="terms" />} />
+      <Route path="/privacy" element={<PolicyPage policy="privacy" />} />
+      <Route path="/refund-policy" element={<PolicyPage policy="refund" />} />
+      <Route path="/shipping-policy" element={<PolicyPage policy="shipping" />} />
+      <Route path="/contact" element={<Contact />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

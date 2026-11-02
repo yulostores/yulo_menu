@@ -154,6 +154,11 @@ export default function Bill() {
     }
   }, [pendingError, payBlockedReason]);
 
+  // Paid: the restaurant's offer was used on this bill — stop showing it.
+  useEffect(() => {
+    if (phase === "paid" || settled) qc.removeQueries({ queryKey: ["tableOffer"] });
+  }, [phase, settled, qc]);
+
   // No bill any more (the sitting closed) — was it just paid? A guest who reloads after
   // paying, or whose verify call was lost while the webhook settled it, lands here.
   useEffect(() => {

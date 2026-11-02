@@ -72,6 +72,22 @@ export const menuApi = {
   cancelBillPayment: (restaurantId, tableId) =>
     client.post(`/restaurants/${restaurantId}/tables/${tableId}/bill/cancel`),
 
+  // ── Live customer activity at the table (lib/diner.js) — all best-effort ──
+  // → { token, expiresAt } | { token: null } while the restaurant has it off.
+  startDiner: (restaurantId, tableId) => client.post(`/restaurants/${restaurantId}/tables/${tableId}/diner`),
+  // The cart this phone holds now ({ menuItemId, quantity } lines); the server prices it.
+  syncCart: (restaurantId, tableId, items) =>
+    client.put(`/restaurants/${restaurantId}/tables/${tableId}/cart`, { items }),
+  // → { offer | null }: an offer the restaurant sent this diner, off the table's bill.
+  getTableOffer: (restaurantId, tableId) => client.get(`/restaurants/${restaurantId}/tables/${tableId}/offer`),
+  viewTableOffer: (restaurantId, tableId, offerId) =>
+    client.post(`/restaurants/${restaurantId}/tables/${tableId}/offer/${offerId}/view`),
+  // Opening a dish / searching the menu, so the restaurant sees it (responses unused).
+  touchItem: (itemId) => client.get(`/items/${itemId}`),
+  touchSearch: (restaurantId, q) => client.get(`/restaurants/${restaurantId}/menu/search`, { params: { q } }),
+  // "Don't share my activity" — the diner's own guest account.
+  stopSharing: () => client.patch(`/users/me/preferences`, { shareActivity: false }),
+
   // Public app switches — payments.paymentSimulationEnabled says whether the simulated
   // stand-in may be used (local/dev only).
   getAppConfig: () => client.get(`/app/config`),

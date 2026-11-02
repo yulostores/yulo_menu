@@ -1,17 +1,23 @@
 // Ported near-verbatim from yulo_restaurant/src/screens/customer/ItemDetail.jsx.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Minus, Plus } from "lucide-react";
 
 import { flattenMenu, useRestaurantMenu } from "@/hooks/useMenu";
 import { useTableSession } from "@/context/TableSessionContext";
 import Layout, { FoodThumb, VegDot, formatPrice } from "@/components/Layout";
+import { menuApi } from "@/api/menu.api";
 
 export default function ItemDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { session, addToCart } = useTableSession();
+  const { session, addToCart, dinerActive } = useTableSession();
+
+  // The restaurant's live dashboard sees which dish a diner opened (best-effort).
+  useEffect(() => {
+    if (dinerActive && id) menuApi.touchItem(id).catch(() => null);
+  }, [dinerActive, id]);
 
   const { data: menu = [], isLoading, isError, error } = useRestaurantMenu(session.restaurantId);
 

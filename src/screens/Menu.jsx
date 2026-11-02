@@ -1,7 +1,7 @@
 // Ported near-verbatim from yulo_restaurant/src/screens/customer/Menu.jsx — same public
 // GET /api/restaurants/:id/menu contract, same category-tree flattening.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Minus, Plus, Search, ShoppingBag } from "lucide-react";
 
@@ -10,6 +10,8 @@ import { flattenMenu, useRestaurantMenu, useRestaurant } from "@/hooks/useMenu";
 import { useTableSession } from "@/context/TableSessionContext";
 import Layout, { FoodThumb, VegDot, formatPrice } from "@/components/Layout";
 import Home from "@/screens/Home";
+import { ActivityNotice } from "@/components/TableOffer";
+import { menuApi } from "@/api/menu.api";
 
 const FOOD_FILTERS = [
   { value: "all", label: "All" },
@@ -30,6 +32,15 @@ export default function Menu() {
   const [foodFilter, setFoodFilter] = useState("all");
 
   const items = useMemo(() => flattenMenu(menu), [menu]);
+
+  // The restaurant's live dashboard sees what a diner searches for (best-effort; result unused).
+  const { dinerActive } = useTableSession();
+  useEffect(() => {
+    const term = search.trim();
+    if (!dinerActive || term.length < 2) return undefined;
+    const timer = setTimeout(() => menuApi.touchSearch(session.restaurantId, term).catch(() => null), 1200);
+    return () => clearTimeout(timer);
+  }, [search, dinerActive, session.restaurantId]);
 
   const categories = useMemo(() => ["All", ...menu.map((c) => c.name).filter(Boolean)], [menu]);
 
@@ -199,6 +210,7 @@ export default function Menu() {
           </div>
         )}
       </div>
+      <ActivityNotice />
     </Layout>
   );
 }

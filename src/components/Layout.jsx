@@ -7,6 +7,7 @@ import { BellRing, ClipboardList, Receipt, ChevronLeft, UtensilsCrossed } from "
 
 import { cn } from "@/lib/utils";
 import { useTableSession } from "@/context/TableSessionContext";
+import TableOffer from "@/components/TableOffer";
 
 const NAV = [
   { to: "/menu", label: "Menu", icon: UtensilsCrossed },
@@ -80,7 +81,10 @@ export default function Layout({ children, title, onBack, showBack = false, show
           </header>
         ) : null}
 
-        <main className={cn("flex-1", showNav && "pb-20", footer && "pb-24")}>{children}</main>
+        <main className={cn("flex-1", showNav && "pb-20", footer && "pb-24")}>
+          {showNav ? <TableOffer /> : null}
+          {children}
+        </main>
 
         {footer ? (
           <div className="sticky bottom-0 z-20 border-t border-brand-cream/60 bg-brand-page/95 px-4 py-3 backdrop-blur">

@@ -7,6 +7,8 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
+import { useCartSync, useDinerToken } from "@/hooks/useDiner";
+
 const SESSION_KEY = "yulo_menu_session";
 const CART_KEY = "yulo_menu_cart";
 
@@ -138,10 +140,14 @@ export function TableSessionProvider({ children }) {
     return { addToCart, setQuantity, removeFromCart, clearCart, setGuestPhone };
   }, []);
 
+  // Live customer activity at this table (hooks/useDiner.js) — best-effort, never blocks ordering.
+  const dinerActive = useDinerToken(session.restaurantId, session.tableId);
+  useCartSync(session.restaurantId, session.tableId, cart, dinerActive);
+
   const cartCount = cart.reduce((sum, line) => sum + line.quantity, 0);
   const cartTotal = cart.reduce((sum, line) => sum + line.price * line.quantity, 0);
 
-  const value = { session, cart, cartCount, cartTotal, ...api };
+  const value = { session, cart, cartCount, cartTotal, dinerActive, ...api };
 
   return <TableSessionContext.Provider value={value}>{children}</TableSessionContext.Provider>;
 }

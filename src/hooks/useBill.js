@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { menuApi } from "@/api/menu.api";
 import { menuKeys } from "./useMenu";
@@ -74,4 +75,37 @@ export function fetchBillPaymentStatus(restaurantId, tableId, razorpayOrderId) {
   return menuApi
     .getBillPaymentStatus(restaurantId, tableId, razorpayOrderId)
     .then((r) => r.data.data.bill ?? null);
+}
+
+// Partner-shop coupons the paid bill earned (`bill.couponsEarned.count` on the payment-status
+// call). They're issued just after the payment, so a 0 is asked again a couple of times. Only an
+// online payment by a signed-in Yulo customer earns any; everyone else stays at 0 (no note).
+export const COUPON_RETRY_MS = 2_000;
+export const COUPON_RETRIES = 2;
+
+export function useBillCouponsEarned(restaurantId, tableId, razorpayOrderId, { enabled = true } = {}) {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    if (!enabled || !restaurantId || !tableId) return undefined;
+    let alive = true;
+    let timer;
+    const ask = (attempt) => {
+      fetchBillPaymentStatus(restaurantId, tableId, razorpayOrderId)
+        .then((bill) => {
+          if (!alive) return;
+          const n = Number(bill?.couponsEarned?.count) || 0;
+          setCount(n);
+          if (n === 0 && bill?.paid && attempt < COUPON_RETRIES) timer = setTimeout(() => ask(attempt + 1), COUPON_RETRY_MS);
+        })
+        .catch(() => {
+          // A bonus note — a failed read just shows nothing.
+        });
+    };
+    ask(0);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [enabled, restaurantId, tableId, razorpayOrderId]);
+  return count;
 }

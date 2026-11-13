@@ -15,13 +15,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, Loader2, Receipt, Store } from "lucide-react";
+import { CheckCircle2, Loader2, Receipt, Store, Ticket } from "lucide-react";
 
 import { useTableSession } from "@/context/TableSessionContext";
 import {
   fetchBillPaymentStatus,
   useAppConfig,
   useBill,
+  useBillCouponsEarned,
   useCancelBillPayment,
   usePayBill,
   usePayBillSimulate,
@@ -176,9 +177,11 @@ export default function Bill() {
   }, [bill, settled, restaurantId, tableId]);
 
   function markSettled(amount) {
+    // Kept for the earned-coupons note below (asked by this payment's Razorpay order).
+    const razorpayOrderId = payingRef.current ?? recallPaying(tableId);
     rememberPaying(tableId, null);
     payingRef.current = null;
-    setSettled({ amount });
+    setSettled({ amount, razorpayOrderId });
     setPhase("paid");
     setNotice(null);
     clearCart();
@@ -391,6 +394,7 @@ export default function Bill() {
           {settled?.amount ? (
             <p className="text-sm text-muted-foreground">{formatPaise(Math.round(settled.amount * 100))} paid.</p>
           ) : null}
+          <EarnedCouponsNote restaurantId={restaurantId} tableId={tableId} razorpayOrderId={settled?.razorpayOrderId ?? null} />
           {notice ? <p className="rounded-lg bg-[#FFF4E5] px-3 py-2 text-sm text-[#8A4B00]">{notice.text}</p> : null}
         </div>
       </Layout>
@@ -625,5 +629,37 @@ export default function Bill() {
         </p>
       </div>
     </Layout>
+  );
+}
+
+// Where "open the Yulo app" goes: VITE_CUSTOMER_APP_URL, else the app's Play Store page (which
+// offers "Open" when it's installed). Coupons live in the app under Profile → My coupons.
+export const CUSTOMER_APP_URL =
+  import.meta.env.VITE_CUSTOMER_APP_URL || "https://play.google.com/store/apps/details?id=com.yulostores.customerapp";
+
+/** "You earned N coupons" with a link to the app — only when the bill earned any. */
+function EarnedCouponsNote({ restaurantId, tableId, razorpayOrderId }) {
+  const count = useBillCouponsEarned(restaurantId, tableId, razorpayOrderId);
+  if (count <= 0) return null;
+  return (
+    <div className="mt-2 w-full max-w-sm rounded-2xl border border-brand-orange/40 bg-[#FFF4EC] p-4 text-left" role="status">
+      <div className="flex items-center gap-3">
+        <Ticket className="h-6 w-6 shrink-0 text-brand-orange" aria-hidden="true" />
+        <div>
+          <p className="font-bold">
+            You earned {count} {count === 1 ? "coupon" : "coupons"}
+          </p>
+          <p className="text-sm text-muted-foreground">From shops near this restaurant — find them in the Yulo app under My coupons.</p>
+        </div>
+      </div>
+      <a
+        href={CUSTOMER_APP_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mt-3 block rounded-full bg-brand-orange px-4 py-2 text-center text-sm font-bold text-white"
+      >
+        Open the Yulo app
+      </a>
+    </div>
   );
 }

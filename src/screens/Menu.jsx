@@ -2,6 +2,7 @@
 // GET /api/restaurants/:id/menu contract, same category-tree flattening.
 
 import { useEffect, useMemo, useState } from "react";
+import { fullPriceOf, hasPortions } from "@/lib/portion";
 import { useNavigate } from "react-router-dom";
 import { Minus, Plus, Search, ShoppingBag } from "lucide-react";
 
@@ -143,7 +144,11 @@ export default function Menu() {
         ) : (
           <div className="space-y-3">
             {visible.map((item) => {
-              const cartLine = cart.find((line) => line.menuItemId === item._id);
+              const sized = hasPortions(item);
+              const cartLine = sized ? null : cart.find((line) => line.menuItemId === item._id);
+              const sizedCount = sized
+                ? cart.filter((line) => String(line.menuItemId).startsWith(`${item._id}:`)).reduce((n, l) => n + l.quantity, 0)
+                : 0;
 
               return (
                 <article key={item._id} className="flex gap-3 rounded-2xl border border-brand-cream/70 bg-white p-3">
@@ -157,7 +162,9 @@ export default function Menu() {
                     ) : null}
                     <div className="mt-2 flex items-center gap-2">
                       <span className="font-bold text-brand-red">
-                        {formatPrice(item.effectivePrice ?? item.sellingPrice)}
+                        {sized
+                          ? `Half ${formatPrice(item.halfPlatePrice)} · Full ${formatPrice(fullPriceOf(item))}`
+                          : formatPrice(item.effectivePrice ?? item.sellingPrice)}
                       </span>
                       {item.discountedPrice && item.discountedPrice < item.sellingPrice ? (
                         <span className="text-xs text-muted-foreground line-through">
@@ -174,6 +181,15 @@ export default function Menu() {
                       <span className="absolute inset-0 grid place-items-center rounded-xl bg-black/55 text-[11px] font-bold text-white">
                         Unavailable
                       </span>
+                    ) : sized ? (
+                      // Two sizes: the dish page asks Half or Full.
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/item/${item._id}`)}
+                        className="absolute -bottom-2 left-1/2 flex -translate-x-1/2 items-center gap-1 whitespace-nowrap rounded-lg bg-brand-gradient px-3 py-1.5 text-xs font-bold text-white shadow-md"
+                      >
+                        <Plus className="h-3 w-3" /> {sizedCount > 0 ? `Add · ${sizedCount} in cart` : "Add"}
+                      </button>
                     ) : cartLine ? (
                       <div className="absolute -bottom-2 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-lg bg-brand-gradient px-2 py-1.5 text-white shadow-md">
                         <button

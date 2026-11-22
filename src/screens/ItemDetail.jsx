@@ -8,6 +8,7 @@ import { flattenMenu, useRestaurantMenu } from "@/hooks/useMenu";
 import { useTableSession } from "@/context/TableSessionContext";
 import Layout, { FoodThumb, VegDot, formatPrice } from "@/components/Layout";
 import { menuApi } from "@/api/menu.api";
+import { fullPriceOf, hasPortions, portionItem } from "@/lib/portion";
 
 export default function ItemDetail() {
   const { id } = useParams();
@@ -23,6 +24,8 @@ export default function ItemDetail() {
 
   const [quantity, setQuantity] = useState(1);
   const [instructions, setInstructions] = useState("");
+  // Half / full plate, for a dish sold in both sizes. Full is the default.
+  const [portion, setPortion] = useState("full");
 
   const item = useMemo(() => flattenMenu(menu).find((i) => String(i._id) === String(id)) ?? null, [menu, id]);
 
@@ -52,11 +55,14 @@ export default function ItemDetail() {
     );
   }
 
-  const unitPrice = item.effectivePrice ?? item.sellingPrice ?? 0;
+  const sized = hasPortions(item);
+  const unitPrice = sized
+    ? (portion === "half" ? item.halfPlatePrice : fullPriceOf(item))
+    : item.effectivePrice ?? item.sellingPrice ?? 0;
   const unavailable = item.isAvailable === false;
 
   function add() {
-    addToCart(item, quantity, instructions.trim());
+    addToCart(portionItem(item, portion), quantity, instructions.trim());
     navigate("/menu");
   }
 
@@ -93,10 +99,38 @@ export default function ItemDetail() {
 
         <div className="flex items-baseline gap-2">
           <span className="text-2xl font-bold text-brand-red">{formatPrice(unitPrice)}</span>
-          {item.discountedPrice && item.discountedPrice < item.sellingPrice ? (
+          {!sized && item.discountedPrice && item.discountedPrice < item.sellingPrice ? (
             <span className="text-sm text-muted-foreground line-through">{formatPrice(item.sellingPrice)}</span>
           ) : null}
         </div>
+
+        {sized ? (
+          <div>
+            <p className="mb-2 text-sm font-bold">Plate size</p>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { key: "full", label: "Full plate", price: fullPriceOf(item) },
+                { key: "half", label: "Half plate", price: item.halfPlatePrice },
+              ].map((p) => (
+                <button
+                  key={p.key}
+                  type="button"
+                  aria-pressed={portion === p.key}
+                  onClick={() => setPortion(p.key)}
+                  className={
+                    "flex items-center justify-between rounded-xl border px-3 py-2.5 text-sm font-semibold transition " +
+                    (portion === p.key
+                      ? "border-brand-orange bg-brand-orange/10 text-brand-orange"
+                      : "border-brand-cream bg-white text-[#5a403e]")
+                  }
+                >
+                  <span>{p.label}</span>
+                  <span>{formatPrice(p.price)}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         {item.ingredients?.length ? (
           <div>

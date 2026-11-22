@@ -59,7 +59,13 @@ export function useCartSync(restaurantId, tableId, cart, active) {
   const lastSent = useRef(null);
   useEffect(() => {
     if (!active) return undefined;
-    const items = cart.map((line) => ({ menuItemId: line.menuItemId, quantity: line.quantity }));
+    // Half/full lines of one dish ("<id>:half") are the same dish to the live view.
+    const byItem = new Map();
+    for (const line of cart) {
+      const id = String(line.menuItemId).split(":")[0];
+      byItem.set(id, (byItem.get(id) ?? 0) + line.quantity);
+    }
+    const items = [...byItem].map(([menuItemId, quantity]) => ({ menuItemId, quantity }));
     const body = JSON.stringify(items);
     if (body === lastSent.current) return undefined;
     const timer = setTimeout(() => {

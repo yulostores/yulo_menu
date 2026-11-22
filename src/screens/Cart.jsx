@@ -4,6 +4,7 @@
 // backend) — no login, an optional phone number only.
 
 import { useState } from "react";
+import { splitLineId } from "@/lib/portion";
 import { useNavigate } from "react-router-dom";
 import { Minus, Phone, Plus, ShoppingBag, Trash2 } from "lucide-react";
 
@@ -57,7 +58,7 @@ export default function Cart() {
       setGuestPhone(phone.trim());
       const body = {
         items: cart.map((line) => ({
-          menuItemId: line.menuItemId,
+          ...splitLineId(line.menuItemId),
           quantity: line.quantity,
           note: line.specialInstructions || undefined,
         })),

@@ -15,7 +15,8 @@ export const menuApi = {
   getRestaurant: (restaurantId) => client.get(`/restaurants/${restaurantId}`),
 
   // Returns { menu: [{ _id, name, subCategories: [{ _id, name, items }], items }] }
-  getMenu: (restaurantId) => client.get(`/restaurants/${restaurantId}/menu`),
+  // channel=dine_in: dine-in-only dishes (switched off for online orders) are on the table menu.
+  getMenu: (restaurantId) => client.get(`/restaurants/${restaurantId}/menu`, { params: { channel: "dine_in" } }),
 
   getTable: (restaurantId, tableId) =>
     client.get(`/restaurants/${restaurantId}/tables/${tableId}`),
@@ -59,6 +60,13 @@ export const menuApi = {
   // reports another party's bill. → { bill: { status, paid, sessionStatus, refund, … } | null }
   getBillPaymentStatus: (restaurantId, tableId, razorpayOrderId) =>
     client.get(`/restaurants/${restaurantId}/tables/${tableId}/bill/payment`, {
+      params: razorpayOrderId ? { razorpayOrderId } : {},
+    }),
+
+  // The paid bill as an invoice — found by the Razorpay order the guest paid with, else the
+  // table's bill settled in the last few minutes.
+  getInvoice: (restaurantId, tableId, razorpayOrderId) =>
+    client.get(`/restaurants/${restaurantId}/tables/${tableId}/bill/invoice`, {
       params: razorpayOrderId ? { razorpayOrderId } : {},
     }),
 

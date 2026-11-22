@@ -13,6 +13,7 @@
 //     settles a bill whose verify call never arrived.
 
 import { useEffect, useRef, useState } from "react";
+import Invoice from "@/components/Invoice";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Loader2, Receipt, Store, Ticket } from "lucide-react";
@@ -395,6 +396,8 @@ export default function Bill() {
             <p className="text-sm text-muted-foreground">{formatPaise(Math.round(settled.amount * 100))} paid.</p>
           ) : null}
           <EarnedCouponsNote restaurantId={restaurantId} tableId={tableId} razorpayOrderId={settled?.razorpayOrderId ?? null} />
+          {/* The paid bill as an invoice, with Download / Print. */}
+          <Invoice restaurantId={restaurantId} tableId={tableId} razorpayOrderId={settled?.razorpayOrderId ?? null} />
           {notice ? <p className="rounded-lg bg-[#FFF4E5] px-3 py-2 text-sm text-[#8A4B00]">{notice.text}</p> : null}
         </div>
       </Layout>
@@ -585,7 +588,11 @@ export default function Bill() {
                   {line.sublabel ? <span className="block text-[11px]">{line.sublabel}</span> : null}
                 </span>
                 <span className={line.amountPaise < 0 ? "text-brand-green" : undefined}>
-                  {line.amountPaise < 0 ? `−${formatPaise(-line.amountPaise)}` : formatPaise(line.amountPaise)}
+                  {line.amountPaise < 0
+                    ? `−${formatPaise(-line.amountPaise)}`
+                    : line.key === "round_off"
+                      ? `+${formatPaise(line.amountPaise)}`
+                      : formatPaise(line.amountPaise)}
                 </span>
               </div>
             ))
@@ -604,7 +611,9 @@ export default function Bill() {
               ) : null}
               {bill.serviceChargeAmount ? (
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Service charge ({bill.serviceChargePercent}%)</span>
+                  <span className="text-muted-foreground">
+                    Service charge{bill.serviceChargePercent ? ` (${bill.serviceChargePercent}%)` : ""}
+                  </span>
                   <span>{formatPrice(bill.serviceChargeAmount)}</span>
                 </div>
               ) : null}

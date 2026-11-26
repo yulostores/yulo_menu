@@ -39,7 +39,7 @@ export function useAppConfig() {
 
 export function usePayBill(restaurantId, tableId) {
   return useMutation({
-    mutationFn: () => menuApi.payBill(restaurantId, tableId).then((r) => r.data.data),
+    mutationFn: (opts) => menuApi.payBill(restaurantId, tableId, opts).then((r) => r.data.data),
   });
 }
 
@@ -108,4 +108,18 @@ export function useBillCouponsEarned(restaurantId, tableId, razorpayOrderId, { e
     };
   }, [enabled, restaurantId, tableId, razorpayOrderId]);
   return count;
+}
+
+
+// The coupons a guest's paid bill earned ("Get free coupons" token). Issued just after the payment,
+// so it keeps asking every few seconds while the server says they're still on their way.
+export function useGuestCoupons(restaurantId, tableId, token) {
+  return useQuery({
+    queryKey: ["guestCoupons", restaurantId, tableId, token],
+    queryFn: () => menuApi.getBillCoupons(restaurantId, tableId, token).then((r) => r.data.data),
+    enabled: Boolean(restaurantId && tableId && token),
+    refetchInterval: (query) => (query.state.data?.issuing || query.state.data?.paid === false ? 3_000 : false),
+    staleTime: 10_000,
+    retry: 1,
+  });
 }

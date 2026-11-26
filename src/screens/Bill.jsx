@@ -33,6 +33,7 @@ import { menuKeys } from "@/hooks/useMenu";
 import { useCreateRequest } from "@/hooks/useOrder";
 import { openRazorpayCheckout, RazorpayCancelledError } from "@/lib/razorpay";
 import Layout, { formatPrice } from "@/components/Layout";
+import { CouponDetailsForm, EMPTY_DETAILS, GuestCouponsList, couponDetailsErrors } from "@/components/GuestCoupons";
 import { AWAITING_APPROVAL } from "@/lib/orderStatus";
 
 // Mirrors yulo_backend billing.service.js: the bill can only be settled once every round
@@ -99,6 +100,28 @@ function refundNote(status) {
     : " If money left your account, it will be refunded automatically.";
 }
 
+// "Get free coupons" details and the coupon token, kept for this tab only (a reload mid-payment
+// keeps them; closing the tab forgets them).
+const couponDetailsKey = (tableId) => `yulo_menu_coupon_details_${tableId}`;
+const couponTokenKey = (tableId) => `yulo_menu_coupon_token_${tableId}`;
+function readSession(key, fallback) {
+  try {
+    const raw = window.sessionStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+function writeSession(key, value) {
+  try {
+    if (value == null) window.sessionStorage.removeItem(key);
+    else window.sessionStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Private mode / storage off — the form simply won't survive a reload.
+  }
+}
+const isBlank = (d) => !d.name.trim() && !d.gender && !String(d.phone).trim() && !d.dateOfBirth;
+
 export default function Bill() {
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -115,6 +138,14 @@ export default function Bill() {
   const [counterOpen, setCounterOpen] = useState(false);
   const [waiterAsked, setWaiterAsked] = useState(false);
   const payingRef = useRef(null);
+  // The optional "Get free coupons" form (components/GuestCoupons.jsx).
+  const [couponOpen, setCouponOpen] = useState(() => !isBlank(readSession(couponDetailsKey(tableId), EMPTY_DETAILS)));
+  const [couponDetails, setCouponDetails] = useState(() => readSession(couponDetailsKey(tableId), EMPTY_DETAILS));
+  const [couponErrors, setCouponErrors] = useState({});
+  const [couponToken, setCouponToken] = useState(() => readSession(couponTokenKey(tableId), null));
+  useEffect(() => {
+    writeSession(couponDetailsKey(tableId), isBlank(couponDetails) ? null : couponDetails);
+  }, [tableId, couponDetails]);
 
   // Polled while a payment might be in flight so a bill settled by the webhook is noticed
   // here even if this device's own verify call never lands. Stops once settled.
@@ -244,11 +275,33 @@ export default function Bill() {
     if (phase !== "idle" && phase !== "unconfirmed") return;
     setNotice(null);
     setPendingError(false);
+
+    // Coupons are optional: an open but empty form is the same as "No thanks".
+    const wantsCoupons = couponOpen && !isBlank(couponDetails);
+    if (wantsCoupons) {
+      const errors = couponDetailsErrors(couponDetails);
+      setCouponErrors(errors);
+      if (Object.keys(errors).length) {
+        setNotice({ tone: "error", text: "Check your details for the coupons — or tap “No thanks” to pay without them." });
+        return;
+      }
+    }
     setPhase("starting");
 
     let started;
     try {
-      started = await payBill.mutateAsync();
+      started = await payBill.mutateAsync(
+        wantsCoupons
+          ? {
+              couponDetails: {
+                name: couponDetails.name.trim(),
+                gender: couponDetails.gender,
+                phone: String(couponDetails.phone).replace(/\D/g, "").slice(-10),
+                dateOfBirth: couponDetails.dateOfBirth,
+              },
+            }
+          : undefined,
+      );
     } catch (err) {
       if (err?.code === "BILL_ALREADY_PAID") {
         markSettled(totalRupees);
@@ -270,6 +323,9 @@ export default function Bill() {
     }
 
     const { razorpayOrder, paymentSimulated } = started;
+    // Only this payment's token: a guest who skipped the form this time shows no old coupons.
+    setCouponToken(started.couponToken ?? null);
+    writeSession(couponTokenKey(tableId), started.couponToken ?? null);
     if (!razorpayOrder) {
       // Local/dev only: the server is in payment-simulation mode. Never used otherwise.
       if (paymentSimulated && simulationAllowed) {
@@ -395,7 +451,11 @@ export default function Bill() {
           {settled?.amount ? (
             <p className="text-sm text-muted-foreground">{formatPaise(Math.round(settled.amount * 100))} paid.</p>
           ) : null}
-          <EarnedCouponsNote restaurantId={restaurantId} tableId={tableId} razorpayOrderId={settled?.razorpayOrderId ?? null} />
+          {couponToken ? (
+            <GuestCouponsList restaurantId={restaurantId} tableId={tableId} token={couponToken} appUrl={CUSTOMER_APP_URL} />
+          ) : (
+            <EarnedCouponsNote restaurantId={restaurantId} tableId={tableId} razorpayOrderId={settled?.razorpayOrderId ?? null} />
+          )}
           {/* The paid bill as an invoice, with Download / Print. */}
           <Invoice restaurantId={restaurantId} tableId={tableId} razorpayOrderId={settled?.razorpayOrderId ?? null} />
           {notice ? <p className="rounded-lg bg-[#FFF4E5] px-3 py-2 text-sm text-[#8A4B00]">{notice.text}</p> : null}
@@ -632,6 +692,23 @@ export default function Bill() {
             <span>{breakdown ? formatPaise(breakdown.grandTotal) : formatPrice(bill.grandTotal)}</span>
           </div>
         </section>
+
+        {!nothingToPay ? (
+          <CouponDetailsForm
+            open={couponOpen}
+            onOpenChange={(open) => {
+              setCouponOpen(open);
+              if (!open) setCouponErrors({});
+            }}
+            details={couponDetails}
+            onChange={(next) => {
+              setCouponDetails(next);
+              if (Object.keys(couponErrors).length) setCouponErrors(couponDetailsErrors(next));
+            }}
+            errors={couponErrors}
+            disabled={busy}
+          />
+        ) : null}
 
         <p className="px-2 text-center text-[11px] text-muted-foreground">
           Prefer to pay in person? Tap &quot;Pay at the counter instead&quot; — or ask your waiter.

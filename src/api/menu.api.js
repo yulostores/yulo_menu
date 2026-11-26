@@ -47,8 +47,15 @@ export const menuApi = {
   // back the SAME Razorpay order while it can still be paid for this amount.
   // → { bill, razorpayOrder | null, reused, paymentSimulated }. razorpayOrder is null only
   // when the server runs in payment-simulation mode (local/dev) — see payBillSimulate.
-  payBill: (restaurantId, tableId) =>
-    client.post(`/restaurants/${restaurantId}/tables/${tableId}/bill/pay`),
+  // `couponDetails` ({ name, gender, phone, dateOfBirth }) — the optional "Get free coupons"
+  // form; the response then carries a `couponToken` for getBillCoupons.
+  payBill: (restaurantId, tableId, { couponDetails } = {}) =>
+    client.post(`/restaurants/${restaurantId}/tables/${tableId}/bill/pay`, couponDetails ? { couponDetails } : {}),
+
+  // The partner coupons the paid bill earned, for the device holding its couponToken.
+  // → { paid, issuing, coupons: [{ code, title, terms, seller, expiresAt, … }], phoneLast4 }
+  getBillCoupons: (restaurantId, tableId, token) =>
+    client.get(`/restaurants/${restaurantId}/tables/${tableId}/bill/coupons`, { params: { token } }),
 
   // Dev/local-only stand-in for a real payment. The route only exists while the server's
   // payment simulation is on (404 otherwise) — never in production.
